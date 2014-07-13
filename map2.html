@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset=utf-8 />
+<title>Tasmanian Crash Data</title>
+<meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+<script src='https://api.tiles.mapbox.com/mapbox.js/v1.6.4/mapbox.js'></script>
+<link href='https://api.tiles.mapbox.com/mapbox.js/v1.6.4/mapbox.css' rel='stylesheet' />
+<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css">
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+<script type="text/javascript" src="http://code.jquery.com/ui/1.10.3/jquery-ui.js"></script>
+<script src="http://libs.cartocdn.com/cartodb.js/v3/cartodb.js"></script>
+<link rel="stylesheet" href="http://libs.cartocdn.com/cartodb.js/v3/themes/css/cartodb.css" />
+<style>
+  body { margin:0; padding:0; }
+  #map { position:absolute; top:0; bottom:0; width:100%; }
+
+  #torque-slider {
+            position:absolute;
+            bottom:35px;
+            right:25px;
+            width:300px;
+        }
+        #torque-pause {
+            position:absolute;
+            bottom:28px;
+            right:345px;
+            width:28px;
+            height: 26px;
+            padding: 1px 2px 2px 2px;
+            z-index: 1000;
+            border-radius: 3px;
+            cursor: pointer;
+            background-color: white; 
+            background-image: url(img/play.png);
+            background-repeat:no-repeat; 
+            background-position:center;
+        }
+        #torque-pause.playing {
+          background-color: white; background-image: url(img/pause.png); background-repeat:no-repeat; background-position:center; 
+        }
+        #torque-header {
+          position: absolute;
+          top: 20px;
+          right: 40px;
+          color: white;
+          font-size: 31px;
+          font-family: Georgia, serif;
+          text-shadow:
+             -1px -1px 0 #000,  
+              1px -1px 0 #000,
+              -1px 1px 0 #000,
+               1px 1px 0 #000;
+        }
+        #torque-time {
+          position: absolute;
+          bottom: 60px;
+          right: 40px;
+          color: white;
+          font-size: 31px;
+          font-family: Georgia, serif;
+          text-shadow:
+             -1px -1px 0 #000,  
+              1px -1px 0 #000,
+              -1px 1px 0 #000,
+               1px 1px 0 #000;
+        }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<textarea id="code"></textarea>
+<div id="torque-slider"></div>
+<a id="torque-pause" class="playing"></a>
+<div id="torque-time"></div>
+<div id="torque-header">Tas Crashes<br></div>
+<!-- torque requires underscore as a dependency -->
+<script src='//cdnjs.cloudflare.com/ajax/libs/underscore.js/1.6.0/underscore-min.js'></script>
+<!--
+  torque is a library that works with Leaflet & Mapbox.js, and displays
+  temporal data from CartoDB.
+  See the full documentation at https://github.com/CartoDB/torque
+  -->
+<script src='https://cartodb-libs.global.ssl.fastly.net/torque.full.js'></script>
+<script>
+var map = L.mapbox.map('map', {
+        // remove the 'i'
+        infoControl: false,
+        attributionControl: false
+    })
+    .setView([-42.03501,146.5713], 8);
+
+//Define layers
+var LISTTopographic = new L.tileLayer("https://services.thelist.tas.gov.au/arcgis/rest/services/Basemaps/TopographicGrayScale/ImageServer/tile/{z}/{y}/{x}", {
+    //attribution: "Basemap &copy The LIST",
+    maxZoom: 20,
+    maxNativeZoom: 18
+});
+
+map.addLayer(LISTTopographic);
+
+var style =
+    'Map {' +
+    '-torque-time-attribute: "crash_date";' +
+    '-torque-aggregation-function: "count(cartodb_id)";' +
+    '-torque-frame-count: 1200;' +
+    '-torque-animation-duration: 80;' +
+    '-torque-resolution: 1' +
+    '}' +
+    '#layer {' +
+    '  marker-width: 4;' +
+    '  marker-fill-opacity: 1;' +
+    '  marker-fill: #77B2FF; ' +
+    '  comp-op: "lighten";' +
+    '  [severity = "Serious"] { marker-fill: #FEC44F; }' +
+    '  [severity = "Property Damage Only"] { marker-fill: #FEC44F; }' +
+    '  [frame-offset = 1] { marker-width: 20; marker-fill-opacity: 0.1;}' +
+    '  [frame-offset = 2] { marker-width: 25; marker-fill-opacity: 0.05;}' +
+    '};'
+
+// This layer is an example of ship positions: replace the user
+// and table with your own to use this example.
+var torqueLayer = new L.TorqueLayer({
+    user: 'alexgleith',
+    table: 'crash_gda',
+    cartocss: style,
+    blendmode: 'lighter',
+    // All Mapbox resources use HTTPS when available, so we'll need
+    // to make torque do the same.
+    tiler_protocol: 'https',
+    tiler_port: 443
+});
+init_slider(torqueLayer);
+
+/**
+* inits slider and a small play/pause button
+*/
+function init_slider(torqueLayer) {
+var torqueTime = $('#torque-time');
+$("#torque-slider").slider({
+    min: 0,
+    max: torqueLayer.options.steps,
+    value: 0,
+    step: 1,
+    slide: function(event, ui){
+      var step = ui.value;
+      torqueLayer.setStep(step);
+    }
+});
+
+// each time time changes, move the slider
+torqueLayer.on('change:time', function(changes) {
+  $("#torque-slider" ).slider({ value: changes.step });
+  var month_year = changes.time.toString().substr(4).split(' ');
+  torqueTime.text(month_year[0] + " - " + month_year[2]);
+});
+
+// play-pause toggle
+$("#torque-pause").click(function(){
+  torqueLayer.toggle();
+  $(this).toggleClass('playing');
+});
+};
+var credits = L.control.attribution().addTo(map);
+credits.addAttribution('Map by <a href=http:agl.org.au>agl</a>. Data from <a href="https://data.gov.au/organization/tasmanian-department-of-state-growth">DSG</a>. Basemap <a href=http://thelist.tas.gov.au>The LIST.</a>');
+
+// This example autoplays: there are other options available:
+// https://github.com/CartoDB/torque/blob/master/doc/API.md
+torqueLayer.addTo(map);
+torqueLayer.play();
+
+</script>
+</body>
+</html>
